@@ -304,6 +304,9 @@ def main():
         logging.error('Training folder does not exist at: {}'.format(train_dir))
         exit(1)
     dataset_train = Dataset(train_dir)
+    f = open('test.txt', 'w')
+    f.write(dataset_train)
+    f.close()
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
