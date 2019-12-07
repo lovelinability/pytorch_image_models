@@ -65,13 +65,11 @@ def find_images_and_targets_bak(folder, types=IMG_EXTENSIONS, class_to_idx=None,
             base, ext = os.path.splitext(f)
             if ext.lower() in types:
                 filenames.append(os.path.join(root, f))
-            if ext.lower() == '.txt':
-                rf = open(os.path.join(root, f), "r")
-                text = rf.read()
-                rf.close()
-                temp = text.split(",")
-                class_to_idx[temp[-1]] = None
-                labels.append(temp[-1])
+                with open(os.path.join(root, base + '.txt'), "r") as rf:
+                    text = rf.read()
+                    temp = text.split(",")
+                    labels.append(temp[-1])
+                    class_to_idx[temp[-1]] = None
     if build_class_idx:
         classes = sorted(class_to_idx.keys(), key=natural_key)
         for idx, c in enumerate(classes):
