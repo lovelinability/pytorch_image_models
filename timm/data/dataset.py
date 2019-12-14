@@ -68,8 +68,8 @@ def find_images_and_targets_bak(folder, types=IMG_EXTENSIONS, class_to_idx=None,
                 with open(os.path.join(root, base + '.txt'), "r") as rf:
                     text = rf.read()
                     temp = text.split(",")
-                    labels.append(temp[-1])
-                    class_to_idx[temp[-1]] = None
+                    labels.append(temp[-1].replace("\n", ""))
+                    class_to_idx[temp[-1].replace("\n", "")] = None
     if build_class_idx:
         classes = sorted(class_to_idx.keys(), key=natural_key)
         for idx, c in enumerate(classes):

@@ -12,10 +12,12 @@ import torch
 import torch.nn as nn
 import torch.nn.parallel
 from collections import OrderedDict
+import numpy as np
+from operator import truediv
 
 from timm.models import create_model, apply_test_time_pool, load_checkpoint, is_model, list_models
 from timm.data import Dataset, DatasetTar, create_loader, resolve_data_config
-from timm.utils import accuracy, AverageMeter, natural_key, setup_default_logging
+from timm.utils import accuracy, AverageMeter, natural_key, setup_default_logging, cal_confusions
 
 torch.backends.cudnn.benchmark = True
 
@@ -114,6 +116,8 @@ def validate(args):
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+    c_matrix = np.array(40, 40)
+    labels = np.arange(0, 40, 1)
 
     model.eval()
     end = time.time()
@@ -134,6 +138,7 @@ def validate(args):
             losses.update(loss.item(), input.size(0))
             top1.update(prec1.item(), input.size(0))
             top5.update(prec5.item(), input.size(0))
+            c_matrix += cal_confusions(output, target, labels=labels)
 
             # measure elapsed time
             batch_time.update(time.time() - end)
@@ -160,6 +165,10 @@ def validate(args):
 
     logging.info(' * Prec@1 {:.3f} ({:.3f}) Prec@5 {:.3f} ({:.3f})'.format(
        results['top1'], results['top1_err'], results['top5'], results['top5_err']))
+
+    logging.info('confusion_matrix: \n {}'.format(c_matrix))
+    logging.info('precision by confusion matrix: \n {}'
+                 .format(truediv(np.sum(np.diag(c_matrix)), np.sum(np.sum(c_matrix, axis=1)))))
 
     return results
 

@@ -304,8 +304,6 @@ def main():
         logging.error('Training folder does not exist at: {}'.format(train_dir))
         exit(1)
     dataset_train = Dataset(train_dir)
-    with open('test.txt', 'wb') as f:
-        print(dataset_train.imgs, file=f)
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
@@ -337,6 +335,9 @@ def main():
             logging.error('Validation folder does not exist at: {}'.format(eval_dir))
             exit(1)
     dataset_eval = Dataset(eval_dir)
+
+    with open("eval.txt", 'w') as f:
+        print(dataset_eval.imgs, file=f)
 
     loader_eval = create_loader(
         dataset_eval,

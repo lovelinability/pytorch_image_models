@@ -10,6 +10,7 @@ import csv
 import operator
 import logging
 import numpy as np
+from sklearn.metrics import confusion_matrix
 from collections import OrderedDict
 try:
     from apex import amp
@@ -165,6 +166,18 @@ def accuracy(output, target, topk=(1,)):
     pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
     return [correct[:k].view(-1).float().sum(0) * 100. / batch_size for k in topk]
+
+
+def cal_confusions(output, target, labels=None):
+    """Computes the confusion matrix"""
+    _, pred = output.topk(1, 1, True, True)
+    pred = pred.t()
+    return confusion_matrix(
+        y_true=target.view(1, -1).expand_as(pred),
+        y_pred=pred,
+        labels=labels,
+        sample_weight=None
+    )
 
 
 def get_outdir(path, *paths, inc=False):
