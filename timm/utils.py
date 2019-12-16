@@ -171,9 +171,11 @@ def accuracy(output, target, topk=(1,)):
 def cal_confusions(output, target, labels=None):
     """Computes the confusion matrix"""
     _, pred = output.topk(1, 1, True, True)
-    pred = pred.t()
+    pred = pred.t().view(-1).cpu().numpy()
+    target = target.view(-1).cpu().numpy()
+    # print(pred.size())
     return confusion_matrix(
-        y_true=target.view(1, -1).expand_as(pred),
+        y_true=target,
         y_pred=pred,
         labels=labels,
         sample_weight=None

@@ -116,7 +116,7 @@ def validate(args):
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
-    c_matrix = np.array(40, 40)
+    c_matrix = np.zeros((40, 40), dtype=int)
     labels = np.arange(0, 40, 1)
 
     model.eval()
@@ -169,6 +169,15 @@ def validate(args):
     logging.info('confusion_matrix: \n {}'.format(c_matrix))
     logging.info('precision by confusion matrix: \n {}'
                  .format(truediv(np.sum(np.diag(c_matrix)), np.sum(np.sum(c_matrix, axis=1)))))
+
+    with open('confusion_matrix.csv', 'w') as cf:
+        writer = csv.writer(cf)
+        for row in c_matrix:
+            writer.writerow(row)
+
+        diag = np.diag(c_matrix)
+        each_acc = truediv(diag, np.sum(c_matrix, axis=1))
+        writer.writerow(each_acc)
 
     return results
 
