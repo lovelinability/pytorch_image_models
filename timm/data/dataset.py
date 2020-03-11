@@ -18,6 +18,15 @@ def natural_key(string_):
     """See http://www.codinghorror.com/blog/archives/001018.html"""
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_.lower())]
 
+def parent_label(label):
+    if label < 7:
+        return 0
+    elif label < 15:
+        return 1
+    elif label < 38:
+        return 2
+    else:
+        return 3
 
 def find_images_and_targets(folder, types=IMG_EXTENSIONS, class_to_idx=None, leaf_name_only=True, sort=True):
     if class_to_idx is None:
@@ -82,6 +91,77 @@ def find_images_and_targets_bak(folder, types=IMG_EXTENSIONS, class_to_idx=None,
     else:
         return images_and_targets
 
+def find_images_and_targets_parent_bak(folder, types=IMG_EXTENSIONS, class_to_idx=None, leaf_name_only=True, sort=True):
+    if class_to_idx is None:
+        class_to_idx = dict()
+        build_class_idx = True
+    else:
+        build_class_idx = False
+    labels = []
+    filenames = []
+    for (root, subdirs, files) in os.walk(folder, topdown=False):
+        rel_path = os.path.relpath(root, folder) if (root != folder) else ''
+#         label = os.path.basename(rel_path) if leaf_name_only else rel_path.replace(os.path.sep, '_')
+        for f in files:
+            base, ext = os.path.splitext(f)
+            if ext.lower() in types:
+                filenames.append(os.path.join(root, f))
+            if ext.lower() == '.txt':
+                rf = open(os.path.join(root, f), "r")
+                text = rf.read()
+                rf.close()
+                temp = text.split(",")
+                class_to_idx[temp[-1]] = None
+                labels.append(temp[-1])
+    if build_class_idx:
+        classes = sorted(class_to_idx.keys(), key=natural_key)
+        for idx, c in enumerate(classes):
+            class_to_idx[c] = idx
+    images_and_targets = zip(filenames, [parent_label(class_to_idx[l]) for l in labels])
+    if sort:
+        images_and_targets = sorted(images_and_targets, key=lambda k: natural_key(k[0]))
+    if build_class_idx:
+        return images_and_targets, classes, class_to_idx
+    else:
+        return images_and_targets
+
+def find_images_and_targets_hier(folder, types=IMG_EXTENSIONS, class_to_idx=None, leaf_name_only=True, sort=True):
+    if class_to_idx is None:
+        class_to_idx = dict()
+        build_class_idx = True
+    else:
+        build_class_idx = False
+    labels = []
+    filenames = []
+    for (root, subdirs, files) in os.walk(folder, topdown=False):
+        rel_path = os.path.relpath(root, folder) if (root != folder) else ''
+#         label = os.path.basename(rel_path) if leaf_name_only else rel_path.replace(os.path.sep, '_')
+        for f in files:
+            base, ext = os.path.splitext(f)
+            if ext.lower() in types:
+                filenames.append(os.path.join(root, f))
+            if ext.lower() == '.txt':
+                rf = open(os.path.join(root, f), "r")
+                text = rf.read()
+                rf.close()
+                temp = text.split(",")
+                class_to_idx[temp[-1]] = None
+                labels.append(temp[-1])
+    if build_class_idx:
+        classes = sorted(class_to_idx.keys(), key=natural_key)
+        for idx, c in enumerate(classes):
+            class_to_idx[c] = idx
+    images_and_targets = zip(filenames, [class_to_idx[l] for l in labels])
+    images_and_targets_2 = zip(filenames, [parent_label(class_to_idx[l]) + 40 for l in labels])
+    if sort:
+        images_and_targets = sorted(images_and_targets, key=lambda k: natural_key(k[0]))
+        images_and_targets_2 = sorted(images_and_targets_2, key=lambda k: natural_key(k[0]))
+        images_and_targets = images_and_targets + images_and_targets_2
+    if build_class_idx:
+        return images_and_targets, classes, class_to_idx
+    else:
+        return images_and_targets
+
 
 class Dataset(data.Dataset):
 
@@ -89,9 +169,12 @@ class Dataset(data.Dataset):
             self,
             root,
             load_bytes=False,
-            transform=None):
-
-        imgs, _, _ = find_images_and_targets_bak(root)
+            transform=None,
+            is_hier=False):
+        if is_hier:
+            imgs, _, _ = find_images_and_targets_hier(root)
+        else:
+            imgs, _, _ = find_images_and_targets_bak(root)
         if len(imgs) == 0:
             raise(RuntimeError("Found 0 images in subfolders of: " + root + "\n"
                                "Supported image extensions are: " + ",".join(IMG_EXTENSIONS)))

@@ -60,7 +60,8 @@ parser.add_argument('--tf-preprocessing', action='store_true', default=False,
                     help='Use Tensorflow preprocessing pipeline (require CPU TF installed')
 parser.add_argument('--use-ema', dest='use_ema', action='store_true',
                     help='use ema version of weights if present')
-
+parser.add_argument('--hier-classify', dest='hier_classify', action='store_true', default=False,
+                    help='decide whether to calculate the parent labels precision')
 
 def validate(args):
     # might as well try to validate something
@@ -122,6 +123,10 @@ def validate(args):
     model.eval()
     end = time.time()
     with torch.no_grad():
+        cf = open('results.csv', 'w')
+        cv = open('results-parent.csv', 'w')
+        writer = csv.writer(cf)
+        writer_2 = csv.writer(cv)
         for i, (input, target) in enumerate(loader):
             if args.no_prefetcher:
                 target = target.cuda()
@@ -144,6 +149,22 @@ def validate(args):
             batch_time.update(time.time() - end)
             end = time.time()
 
+            writer.writerow([i, round(top1.avg, 4)])
+            # 计算大类分类准确率
+            if args.hier_classify:
+                a = [i for i in range(0, 6)]
+                b = [i for i in range(6, 14)]
+                c = [i for i in range(14, 37)]
+                d = [i for i in range(37, 40)]
+                corrects = 0.
+                corrects += c_matrix[a][:, a].sum()
+                corrects += c_matrix[b][:, b].sum()
+                corrects += c_matrix[c][:, c].sum()
+                corrects += c_matrix[d][:, d].sum()
+
+                writer_2.writerow([i, round(corrects / c_matrix.sum(), 4)])
+                logging.info('parent precision: {}'.format(corrects / c_matrix.sum()))
+
             if i % args.log_freq == 0:
                 logging.info(
                     'Test: [{0:>4d}/{1}]  '
@@ -154,6 +175,8 @@ def validate(args):
                         i, len(loader), batch_time=batch_time,
                         rate_avg=input.size(0) / batch_time.avg,
                         loss=losses, top1=top1, top5=top5))
+        cf.close()
+        cv.close()
 
     results = OrderedDict(
         top1=round(top1.avg, 4), top1_err=round(100 - top1.avg, 4),
@@ -169,15 +192,14 @@ def validate(args):
     logging.info('confusion_matrix: \n {}'.format(c_matrix))
     logging.info('precision by confusion matrix: \n {}'
                  .format(truediv(np.sum(np.diag(c_matrix)), np.sum(np.sum(c_matrix, axis=1)))))
-
-    with open('confusion_matrix.csv', 'w') as cf:
-        writer = csv.writer(cf)
-        for row in c_matrix:
-            writer.writerow(row)
-
-        diag = np.diag(c_matrix)
-        each_acc = truediv(diag, np.sum(c_matrix, axis=1))
-        writer.writerow(each_acc)
+    # with open('confusion_matrix.csv', 'w') as cf:
+    #     writer = csv.writer(cf)
+    #     for row in c_matrix:
+    #         writer.writerow(row)
+    #
+    #     diag = np.diag(c_matrix)
+    #     each_acc = truediv(diag, np.sum(c_matrix, axis=1))
+    #     writer.writerow(each_acc)
 
     return results
 

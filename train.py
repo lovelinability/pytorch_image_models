@@ -4,6 +4,7 @@ import time
 import logging
 import yaml
 from datetime import datetime
+from timm.loss.loss import FocalLoss, ActivationType
 
 try:
     from apex import amp
@@ -154,7 +155,14 @@ parser.add_argument('--eval-metric', default='prec1', type=str, metavar='EVAL_ME
 parser.add_argument('--tta', type=int, default=0, metavar='N',
                     help='Test/inference time augmentation (oversampling) factor. 0=None (default: 0)')
 parser.add_argument("--local_rank", default=0, type=int)
-
+parser.add_argument('--hier-classify', dest='hier_classify', action='store_true', default=False,
+                    help='decide whether to calculate the parent labels precision')
+parser.add_argument('--labels', dest='labels', default=40,
+                    help='counts of labels')
+parser.add_argument('--hierar-penalty', dest='hierar_penalty', type=float, default=0.000001,
+                    help='penalty parameters')
+parser.add_argument('--use-hier', dest='use-hier', action='store_true', default=False,
+                    help='decide whether to use the hierachical recursive loss')
 
 def _parse_args():
     # Do we have a config file to parse?
@@ -303,7 +311,7 @@ def main():
     if not os.path.exists(train_dir):
         logging.error('Training folder does not exist at: {}'.format(train_dir))
         exit(1)
-    dataset_train = Dataset(train_dir)
+    dataset_train = Dataset(train_dir, is_hier=args.use_hier)
 
     collate_fn = None
     if args.prefetcher and args.mixup > 0:
@@ -336,8 +344,8 @@ def main():
             exit(1)
     dataset_eval = Dataset(eval_dir)
 
-    with open("eval.txt", 'w') as f:
-        print(dataset_eval.imgs, file=f)
+    # with open("eval.txt", 'w') as f:
+    #     print(dataset_eval.imgs, file=f)
 
     loader_eval = create_loader(
         dataset_eval,
@@ -355,6 +363,9 @@ def main():
     if args.mixup > 0.:
         # smoothing is handled with mixup label transform
         train_loss_fn = SoftTargetCrossEntropy().cuda()
+        validate_loss_fn = nn.CrossEntropyLoss().cuda()
+    elif args.use_hier:
+        train_loss_fn = FocalLoss(args.num_classes, ActivationType.SIGMOID)
         validate_loss_fn = nn.CrossEntropyLoss().cuda()
     elif args.smoothing:
         train_loss_fn = LabelSmoothingCrossEntropy(smoothing=args.smoothing).cuda()
@@ -449,8 +460,19 @@ def train_epoch(
                 target = mixup_target(target, args.num_classes, lam, args.smoothing)
 
         output = model(input)
-
-        loss = loss_fn(output, target)
+        if args.use_hier:
+            linear_paras = model.classifier.weight
+            is_hierar = True
+            is_multi = True
+            used_argvs = (args.hierar_penalty, linear_paras, get_hierar_relations())
+            loss = loss_fn(
+                output,
+                target,
+                is_hierar,
+                is_multi,
+                *used_argvs)
+        else:
+            loss = loss_fn(output, target)
         if not args.distributed:
             losses_m.update(loss.item(), input.size(0))
 
@@ -523,12 +545,20 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
     losses_m = AverageMeter()
     prec1_m = AverageMeter()
     prec5_m = AverageMeter()
+    matrix_size = args.labels
+    c_matrix = np.zeros((matrix_size, matrix_size), dtype=int)
+    labels = np.arange(0, matrix_size, 1)
 
     model.eval()
 
     end = time.time()
     last_idx = len(loader) - 1
     with torch.no_grad():
+        cf = open('train_results.csv', 'a+')
+        cv = open('train_results-parent.csv', 'a+')
+        writer = csv.writer(cf)
+        writer_2 = csv.writer(cv)
+        corrects = 0.
         for batch_idx, (input, target) in enumerate(loader):
             last_batch = batch_idx == last_idx
             if not args.prefetcher:
@@ -560,6 +590,22 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
             losses_m.update(reduced_loss.item(), input.size(0))
             prec1_m.update(prec1.item(), output.size(0))
             prec5_m.update(prec5.item(), output.size(0))
+            c_matrix += cal_confusions(output, target, labels=labels)
+
+            writer.writerow([batch_idx, round(losses_m.avg, 4), round(prec1_m.avg, 4)])
+            # 计算大类分类准确率
+            if args.hier_classify:
+                corrects = 0.
+                a = [i for i in range(0, 6)]
+                b = [i for i in range(6, 14)]
+                c = [i for i in range(14, 37)]
+                d = [i for i in range(37, 40)]
+                corrects += c_matrix[a][:, a].sum()
+                corrects += c_matrix[b][:, b].sum()
+                corrects += c_matrix[c][:, c].sum()
+                corrects += c_matrix[d][:, d].sum()
+
+                writer_2.writerow([batch_idx, round(corrects / c_matrix.sum(), 4)])
 
             batch_time_m.update(time.time() - end)
             end = time.time()
@@ -574,6 +620,10 @@ def validate(model, loader, loss_fn, args, log_suffix=''):
                         log_name, batch_idx, last_idx,
                         batch_time=batch_time_m, loss=losses_m,
                         top1=prec1_m, top5=prec5_m))
+                logging.info('parent precision: {}'.format(corrects / c_matrix.sum()))
+
+    cf.close()
+    cv.close()
 
     metrics = OrderedDict([('loss', losses_m.avg), ('prec1', prec1_m.avg), ('prec5', prec5_m.avg)])
 

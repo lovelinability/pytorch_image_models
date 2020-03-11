@@ -302,3 +302,15 @@ def setup_default_logging(default_level=logging.INFO):
     console_handler.setFormatter(FormatterNoInfo())
     logging.root.addHandler(console_handler)
     logging.root.setLevel(default_level)
+
+
+def get_hierar_relations():
+    """ get parent-children relationships from given hierar_taxonomy
+        hierar_taxonomy: parent_label \t child_label_0 \t child_label_1 \n
+    """
+    hierar_relations = {}
+    hierar_relations[40] = [i for i in range(0, 6)]
+    hierar_relations[41] = [i for i in range(6, 14)]
+    hierar_relations[42] = [i for i in range(14, 37)]
+    hierar_relations[43] = [i for i in range(37, 40)]
+    return hierar_relations
